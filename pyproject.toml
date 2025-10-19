@@ -7,3 +7,33 @@ requires-python = ">=3.10"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# ---------------- Ruff Configuration ----------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# 启用的规则集（涵盖格式、导入、Docstring、命名规范）
+select = [
+  "E", "F", "W",    # pycodestyle/pyflakes
+  "I",              # import order (isort)
+  "D",              # docstring style (PEP257)
+  "N",              # naming
+  "UP"              # modern Python upgrades
+]
+
+# 忽略的检查项（防止互斥或课程不强制的规则）
+ignore = [
+  "D203",  # 与 D211 冲突（类/函数前空行）
+  "D212",  # 与 D213 冲突（多行 docstring 第一行位置）
+  "D100",  # 忽略模块缺少 docstring
+  "D101",  # 忽略类缺少 docstring
+  "D102",  # 忽略函数缺少 docstring
+  "D104"   # 忽略包 __init__.py 缺少 docstring
+]
+
+[tool.ruff.format]
+quote-style = "preserve"
+line-ending = "auto"
+
