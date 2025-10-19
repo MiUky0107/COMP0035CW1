@@ -1,0 +1,9 @@
+[project]
+name = "comp0035-cw1-ntu-employment"
+version = "0.1.0"
+description = "COMP0035 Coursework 1 — Data prep and SQLite DB for NTU Graduate Employment Survey"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]

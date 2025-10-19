@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.log
+*.egg-info/
+.venv/
+venv/
+env/
+.idea/
+figs/
+eda_output/
+data/processed/
+*.sqlite
+.DS_Store
