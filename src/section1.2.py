@@ -1,7 +1,7 @@
 """
 COMP0035 Coursework 1 — Section 1.2 Data Preparation.
 
-This script cleans the raw CSV and prepares subsets/figures for three example questions (Q1–Q3):
+This script cleans the raw CSV and prepares subsets/figures for three questions (Q1–Q3):
 - Standardise schema and types.
 - Convert salary-like fields to numeric.
 - Convert percentage strings to floats in the 0–1 range.
@@ -14,6 +14,7 @@ Outputs:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -53,24 +54,27 @@ def _to_number(x: object) -> float | np.nan:
         return np.nan
 
 
+def _truncate(labels: Iterable[str], max_len: int = 40) -> list[str]:
+    """Return labels truncated to a maximum length with ellipsis."""
+    out: list[str] = []
+    for s in labels:
+        t = str(s)
+        if len(t) > max_len:
+            t = t[: max_len - 1] + "…"
+        out.append(t)
+    return out
+
+
 def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
     """Standardise schema and numeric types for preparation tasks."""
     df = df.copy()
 
-    # Ensure expected canonical column names exist if the dataset uses aliases.
-    # (Adjust here only if your raw CSV uses different headers.)
-    # Example:
-    # df.rename(columns={"University": "university"}, inplace=True)
-
     # Percent columns -> 0–1 floats.
-    pct_cols = []
     for c in ["employment_rate_overall", "employment_rate_ft_perm"]:
         if c in df.columns:
             df[c] = df[c].apply(_to_float_pct)
-            pct_cols.append(c)
 
     # Salary columns -> numeric floats.
-    sal_cols = []
     for c in [
         "basic_monthly_mean",
         "basic_monthly_median",
@@ -79,33 +83,32 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
     ]:
         if c in df.columns:
             df[c] = df[c].apply(_to_number)
-            sal_cols.append(c)
 
-    # Year -> numeric (keep as int where possible).
+    # Year -> numeric (keep as pandas nullable Int64).
     if "year" in df.columns:
         df["year"] = pd.to_numeric(df["year"], errors="coerce").astype("Int64")
 
     # Drop exact duplicates to avoid double counting.
     df = df.drop_duplicates()
 
-    # Keep a preview for the report.
+    # Preview and descriptions for traceability.
     df.head(20).to_csv(PROC_DIR / "preview_head20.csv", index=False)
-
-    # Save numeric/categorical descriptions for traceability.
-    num_desc = df.select_dtypes(include=["number", "Int64"]).describe().T
-    num_desc.to_csv(PROC_DIR / "num_desc.csv")
-    cat_desc = df.select_dtypes(exclude=["number", "Int64"]).describe().T
-    cat_desc.to_csv(PROC_DIR / "cat_desc.csv")
+    df.select_dtypes(include=["number", "Int64"]).describe().T.to_csv(PROC_DIR / "num_desc.csv")
+    df.select_dtypes(exclude=["number", "Int64"]).describe().T.to_csv(PROC_DIR / "cat_desc.csv")
 
     return df
 
 
 # ---------- Small plotting helpers (single-plot) ----------
-def save_plot_line(df_xy: pd.DataFrame, x: str, y: str, title: str, out_path: Path) -> None:
+def save_plot_line(
+    df_xy: pd.DataFrame,
+    x: str,
+    y: str,
+    title: str,
+    out_path: Path,
+) -> None:
     """Save a simple line plot for series y over x."""
-    if x not in df_xy.columns or y not in df_xy.columns:
-        return
-    if df_xy.empty:
+    if x not in df_xy.columns or y not in df_xy.columns or df_xy.empty:
         return
     plt.figure()
     plt.plot(df_xy[x], df_xy[y], marker="o")
@@ -117,18 +120,36 @@ def save_plot_line(df_xy: pd.DataFrame, x: str, y: str, title: str, out_path: Pa
     plt.close()
 
 
-def save_plot_bar(df_xy: pd.DataFrame, x: str, y: str, title: str, out_path: Path) -> None:
-    """Save a simple bar chart for df[x] vs df[y]."""
-    if x not in df_xy.columns or y not in df_xy.columns:
+def save_plot_bar(
+    df_xy: pd.DataFrame,
+    x: str,
+    y: str,
+    title: str,
+    out_path: Path,
+) -> None:
+    """Save a bar chart; auto-switch to horizontal for long labels."""
+    if x not in df_xy.columns or y not in df_xy.columns or df_xy.empty:
         return
-    if df_xy.empty:
-        return
-    plt.figure()
-    plt.bar(df_xy[x], df_xy[y])
+
+    labels = _truncate(df_xy[x].astype(str).tolist(), max_len=40)
+    yvals = df_xy[y].tolist()
+
+    # Heuristic: if many categories or long labels, use horizontal bars.
+    use_horizontal = len(labels) > 10 or max((len(s) for s in labels), default=0) > 20
+
+    plt.figure(figsize=(10, 6))
+    if use_horizontal:
+        plt.barh(labels, yvals)
+        plt.gca().invert_yaxis()
+        plt.xlabel(y.replace("_", " ").title())
+        plt.ylabel(x.replace("_", " ").title())
+    else:
+        plt.bar(labels, yvals)
+        plt.xlabel(x.replace("_", " ").title())
+        plt.ylabel(y.replace("_", " ").title())
+        plt.xticks(rotation=30, ha="right")
+
     plt.title(title)
-    plt.xlabel(x.title())
-    plt.ylabel(y.replace("_", " ").title())
-    plt.xticks(rotation=30)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
     plt.close()
@@ -156,7 +177,7 @@ def q1_table_top_median_salary(
     d = d.dropna(subset=["gross_monthly_median"])
 
     g = (
-        d.groupby(group_field)["gross_monthly_median"]
+        d.groupby(group_field, dropna=False)["gross_monthly_median"]
         .median()
         .sort_values(ascending=False)
         .head(top_n)
@@ -174,7 +195,7 @@ def q2_series_employment_trend(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     d = df.dropna(subset=[metric, "year"]).copy()
-    ser = d.groupby("year")[metric].mean().sort_index()
+    ser = d.groupby("year", dropna=False)[metric].mean().sort_index()
     return ser.reset_index().rename(columns={metric: "employment_rate_overall"})
 
 
@@ -229,14 +250,13 @@ def main() -> int:
     # Clean dataset.
     df_clean = clean_dataset(df_raw)
 
-    # Persist a full cleaned copy if you need it downstream (optional).
+    # Persist a full cleaned copy for downstream steps (optional).
     df_clean.to_csv(PROC_DIR / "clean_full.csv", index=False)
 
     # ------ Q1: top-N gross_monthly_median by group ------
-    year_max = int(pd.to_numeric(df_clean["year"], errors="coerce").dropna().max())
-    year_min = max(
-        year_max - 2, int(pd.to_numeric(df_clean["year"], errors="coerce").dropna().min())
-    )
+    years = pd.to_numeric(df_clean["year"], errors="coerce").dropna()
+    year_max = int(years.max())
+    year_min = max(year_max - 2, int(years.min()))
 
     q1 = q1_table_top_median_salary(
         df_clean,
